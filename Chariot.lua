@@ -23,9 +23,17 @@ local cc = Card.click
 function Card:click()
     if self.area and self.area.config.collection and G.STATE == G.STATES.SHOP then
         G.FUNCS.exit_overlay_menu()
+        local key = self.config.center.key
+        local edition = self.edition
         G.E_MANAGER:add_event(Event({
             func = function()
-                chariot.reroll(self.config.center.key)
+                -- Checks "key == edition.key" to account for cases in which the joker can appear in
+                -- the collection with an edition.
+                -- The "not edition.key" case happens with Too Many Jokers.
+                chariot.reroll(
+                    key,
+                    edition and (key == edition.key or not edition.key)
+                )
                 return true
             end
         }))
@@ -39,7 +47,7 @@ G.FUNCS.options = function(e)
     return opt(e)
 end
 
-chariot.reroll = function(key)
+chariot.reroll = function(key, is_edition)
     chariot.reroll_active = true
     if chariot.cancel_reroll then
         chariot.cancel_reroll = nil
@@ -47,7 +55,15 @@ chariot.reroll = function(key)
         return
     end
     if G.GAME.current_round.reroll_cost%10000 == 0 then print(G.GAME.current_round.reroll_cost) end
-    if chariot.card_in_shop(key) or to_big(G.GAME.dollars - G.GAME.current_round.reroll_cost) < to_big(math.max(chariot.config.spend_limit, 0)) then
+    local spend_limit_reached = (
+        to_big(G.GAME.dollars - G.GAME.current_round.reroll_cost) <
+        to_big(math.max(chariot.config.spend_limit, 0))
+    )
+    if(
+        is_edition and chariot.edition_in_shop(key) or
+        chariot.card_in_shop(key) or
+        spend_limit_reached
+    ) then
         chariot.reroll_active = nil
         return
     end
@@ -56,7 +72,7 @@ chariot.reroll = function(key)
         trigger = 'after',
         delay = 1,
         func = function()
-            chariot.reroll(key)
+            chariot.reroll(key, is_edition)
             return true
         end
     }))
@@ -66,5 +82,12 @@ chariot.card_in_shop = function(key)
     if G.STATE ~= G.STATES.SHOP or not G.shop_jokers or not G.shop_jokers.cards then return end
     for _,v in ipairs(G.shop_jokers.cards) do
         if v.config.center_key == key then return true end
+    end
+end
+
+chariot.edition_in_shop = function(key)
+    if G.STATE ~= G.STATES.SHOP or not G.shop_jokers or not G.shop_jokers.cards then return end
+    for _,v in ipairs(G.shop_jokers.cards) do
+        if v.edition and v.edition.key == key then return true end
     end
 end
